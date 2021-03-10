@@ -1,0 +1,277 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Anastasios Vlaikidis"
+date: "3/7/2021"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Project details
+   By using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively. These types of devices are part of the quantified self movement – a group of enthusiasts who regularly take measurements about themselves to improve their health, find patterns in their behavior, or because they are tech geeks. People regularly quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data acquired from accelerometers placed on the belt, forearm, arm, and dumbbells of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+   
+More information is available from this website: 
+   
+    http://groupware.les.inf.puc-rio.br/har 
+   
+(see the section on the Weight Lifting Exercise Dataset).
+
+The training data for this project are available here:
+
+    https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+    
+The test data are available here:
+
+    https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+    
+The data for this project come from this source: 
+
+    http://groupware.les.inf.puc-rio.br/har. 
+
+If you use the document you create for this class for any purpose, please cite the corresponding references as this data has been generously provided for use for this kind of assignment.
+The goal of your project is to predict how they did the exercise. This is called the “classe” variable in the training set.
+
+
+
+## Import and prepare the Data
+
+```{r}
+# Workspace clean up
+rm(list = ls())
+```
+
+```{r}
+DataT <- read.csv("pml-training.csv")
+DataTesting <-read.csv("pml-testing.csv")
+```
+
+```{r eval=FALSE, include=FALSE}
+View(DataT)
+View(DataTesting)
+```
+
+We see that we have some strange strings and we will replace them with NA.
+```{r}
+# Replace with NA
+DataT <- read.csv("pml-training.csv",na.strings =c("#DIV/0!","NA",""))
+DataTesting <- read.csv("pml-testing.csv",na.strings =c("#DIV/0!","NA",""))
+```
+
+Removing NA.
+```{r}
+#Remove columns with more than 95% of NA or "" values
+limit<- dim(DataT)[1] * .95
+gCols <-!apply(DataT, 2,
+          function(x) sum(is.na(x)) > limit||sum(x=="")> limit)
+DataT <- DataT[,gCols]
+
+ limit2 <-dim(DataTesting)[1]*.95
+ gCols2 <-!apply(DataTesting, 2,
+           function(x) sum(is.na(x)) > limit2||sum(x=="")> limit2)
+DataTesting<-DataTesting[,gCols2]
+```
+
+Dropping unwanted columns.
+```{r}
+suppressMessages(library(dplyr))
+DataT<-dplyr::select(DataT,-c(1,2,5))
+DataTesting<-dplyr::select(DataTesting,-c(1,2,5))
+```
+
+We will also remove the variables from our training dataset with near-zero  variance.
+```{r}
+suppressMessages(library(caret))
+bCols<- nearZeroVar(DataT,saveMetrics = T) 
+DataT <- DataT[,bCols$nzv==F]
+DataTesting <- DataTesting[,-3]
+```
+
+```{r include=FALSE}
+names(DataT)
+head(DataT)
+str(DataT)
+summary(DataT)
+```
+
+Our target variable is called  "classe" and its in the last column of our dataset DataT.It is a character variable.We will make it factor so we can easily see its levels.
+```{r}
+class(DataT$classe) 
+DataT[,length(DataT)] <-as.factor(DataT$classe)
+class(DataT$classe)
+levels(DataT$classe)
+```
+
+It has five levels: A,B,C,D,E. Since our target variable qualitative, it will be sensible to draw a barplot and a frequency table to represent our findings..
+```{r}
+suppressMessages(library(gmodels))
+suppressMessages(library(ggplot2))
+gmodels::CrossTable(DataT$classe,digits = 2,format = "SPSS")
+qplot(classe,data = DataT, geom = "bar", main ="Frequency of 'classe' variable",
+      xlab = "classe",ylab ="Freq",fill=classe)
+```
+
+From the barplot we can see that, all levels have almost equal frequencies and level A has the higher frequency when compared with the rest.
+
+## Exploratory analysis
+We will perform an exploratory analysis by using several visualization methods.
+```{r}
+#for reproducibility 
+set.seed(22) 
+#extract numeric columns
+NumericVars <- dplyr::select(DataT,where(is.numeric)) 
+```
+
+Two random scaterplots from the NumericVars dataset, colored by out target variable.
+```{r,warning=F}
+target.levels <- DataT$classe
+for (i in 1:2){
+x <-as.integer(runif(1,1,length(NumericVars)))
+y <-as.integer(runif(1,1,length(NumericVars)))
+print(qplot(NumericVars[,x],NumericVars[,y],col=target.levels,
+      xlab=names(NumericVars)[x],ylab=names(NumericVars)[y]))
+}
+```
+
+Now we will check the normality of our predictors, because if we have deviations from normality some algorithms maybe tricked. We will make 2 random histograms,density plots, QQ plots and hypothesis tests.We can repeat this process if we want to see more plots and generally better understand the shape of our data.
+  
+Histograms   
+```{r,warning=F}
+Rnum <- as.integer(runif(2,1,length(NumericVars)))
+for(i in Rnum) {
+ print(qplot(NumericVars[,i], color=I("red"),bins = 45,
+xlab = names(NumericVars)[i],geom ="histogram")) 
+}
+```
+
+We see that some of our variables are skewed. In a normal distribution, the graph shows symmetry, meaning that there are about as many data values on the left side of the median as on the right side.
+
+Now the density plots.
+```{r,warning=F}
+for(i in Rnum) {
+print(qplot(NumericVars[,i], fill=target.levels,alpha=I(.2),
+ylab ="Density",xlab = names(NumericVars)[i],geom ="density")) 
+}
+```
+
+We do not have the characteristic bell curve of a normal distribution.
+
+
+Quantile-Quantile plots.A 45-degree reference line is also plotted.QQ plots are used to visually check the normality of the data.
+```{r,warning=F}
+suppressMessages(library(ggpubr))
+for(i in Rnum) {
+  print(ggqqplot(NumericVars[,i]))
+}
+```
+
+If the data are consistent with a sample from a normal distribution, the points should lie close to the 45-degree reference line. We see that our data are not close to a normal distribution.
+
+
+Hypothesis tests are also used to check the normality of the data.We will use Kolmogorov-Smirnov tests. The NULL hypothesis is that the data are normally distributed, with the alternative being that they will not be normally distributed.
+```{r}
+suppressMessages(library(nortest))
+for ( i in Rnum){
+print(lillie.test(NumericVars[,i])) #Kolmogorov-Smirnov test
+}
+```
+
+We have a p-value < 0.05 , so we reject the NULL and the data we have are not normally distributed. Because of what we saw from our exploratory analysis, we may consider transforming our data.
+
+
+We will also plot two random boxplots colored by each level of our target variable, because it is easy to see if we have outliers.
+```{r,warning=F}
+for(i in Rnum) {
+  print(qplot(DataT$classe,NumericVars[,i],geom = "boxplot",
+              ylab = names(NumericVars)[i],xlab =names(DataT)[length(DataT)],
+              col=target.levels))
+}
+```
+
+From the boxplots we see that we have outliers .
+
+
+## Correlated predictors
+Now we will calculate the correlation between all the continuous predictors.The idea is that often we have multiple quantitative variables and sometimes they will be highly correlated with each other. In other words, they will be very similar to being the almost the exact same variable. In this case, it is not necessarily useful to include every variable in the model. We might want to include a summary that captures most of the information in those quantitative variables.
+```{r}
+M <- abs(cor(NumericVars))
+diag(M) <- 0
+# which variables have correlation greater than 0.85
+corM<-which(M >.85,arr.ind = T) 
+length(row.names(corM))
+row.names(corM)
+```
+
+It turns out that 26 of our predictors are highly correlated(the first with the second,the third with the fourth and so on).Therefore,including all of these predictors in the model might not necessarily be very useful.Depending on what algorithm we choose for our model, we might consider conducting a principal components analysis when we build it (PCA is most useful for linear type models like GLM, LDA).
+
+
+## Data spliting
+```{r}
+# we use 75% to train the model and 25% to test it
+ inTrain<-createDataPartition(y=DataT$classe, p=.75, list = F) 
+ training<-DataT[inTrain,]  # training set
+ testing<-DataT[-inTrain,]  # testing set
+```
+
+
+## Cross-Validation
+```{r}
+# 10-fold cross validation
+ctrl<-trainControl(method="cv",number = 10)  
+```
+
+
+## Fit a model
+We choose Random Forest because it automatically selects important variables and is robust regarding  correlated predictors and outliers in general.Tree models split numeric data into two groups by looking at conditional statistics of the target variable and will not benefit as much from exponential types of transformations(BoxCox, YeoJohnson, exponential).Monotone transformations(order unchanged) like log will produce the same splits.However, without proper cross-validation, the model can be over-fitted especially with large numbers of variables and results may differ from one run to the next.
+```{r,warning=F}
+modelFit <-caret::train(classe~.,data=training,method="rf",
+        trControl = ctrl, ntree=10)
+modelFit
+```
+
+Model Predictions
+```{r,warning=F}
+# our predicted values
+predictions<-predict(modelFit, newdata=testing,type = "raw") 
+```
+
+Confusion matrix and Statistics
+```{r}
+AC <-confusionMatrix(testing$classe,predictions)
+AC
+```
+
+Out of sample error
+```{r}
+t<-round(((1 - AC$overall[1])*100),2)
+cat("out of sample error:",t,"%")
+```
+
+Variable importance
+```{r}
+var.imp<-varImp(modelFit)
+#plot the top 20 importance variables
+plot(var.imp,main="importance of top 20 variables",top = 20)
+```
+
+
+## Course Project Prediction Quiz Portion
+```{r,warning=F}
+results <-predict(modelFit ,newdata = DataTesting,type = "raw")
+results
+```
+
+
+## Version check and packages used
+```{r}
+devtools::session_info() 
+```
+
+
+
+
