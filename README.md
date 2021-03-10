@@ -27,3 +27,8 @@ The data for this project come from this source:
 
 If you use the document you create for this class for any purpose, please cite the corresponding references as this data has been generously provided for use for this kind 
 of assignment.The goal of your project is to predict how they did the exercise. This is called the “classe” variable in the training set.
+
+
+use this link to see the html page online:
+
+https://htmlpreview.github.io/?https://github.com/izzydi/Practical-Machine-Learning---Course-Project/blob/main/CourseraMLproject.html
